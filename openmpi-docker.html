@@ -8,6 +8,13 @@
 		<link rel="stylesheet" href="assets/css/main.css" />
 		<!--[if lte IE 9]><link rel="stylesheet" href="assets/css/ie9.css" /><![endif]-->
 		<!--[if lte IE 8]><link rel="stylesheet" href="assets/css/ie8.css" /><![endif]-->
+		
+		<script type="text/x-mathjax-config">
+		  MathJax.Hub.Config({tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}});
+		</script>
+		<script type="text/javascript" async
+		  src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-MML-AM_CHTML">
+		</script>
 	</head>
 	<body>
 
@@ -94,21 +101,82 @@
 							<article class="post">
 								<header>
 									<div class="title">
-										<h2><a href="openmpi-docker.html">Open MPI using Docker</a></h2>
+										<h2><a href="javascript:history.go(0)">Open MPI using Docker</a></h2>
 										<p>Enjoy a dockery, message passing ride</p>
 									</div>
 									<div class="meta">
 										<time class="published" datetime="2015-11-01">April 13, 2017</time>
 									</div>
 								</header>
-								<a href="openmpi-docker.html" class="image featured"><img src="images/openmpi-docker.png" alt="" /></a>
-								<p>This blog post will help you set up your own MPI cluster within minutes. Throughout our journey of configuration, we will discover the power of docker in setting up clusters in no time and without extra physical hardware. Believe me, docker is the future.</p>
+								<a href="javascript:history.go(0)" class="image featured"><img src="images/openmpi-docker.png" alt="" /></a>
+								<p>This semester, I registered myself for the High Performance Computing course at my university. Though a little tough, this course is one of the best courses I have taken. The initial focus of this corse was task decomposition techniques and more towards shared memory processing. After a few weeks of labs and lectures on shared memory frameworks like OpenMP, the foucus of this course shifted towards message passing interfaces. The basic advantage of message passing interfaces over multi-threaded/shared memory frameworks, is the ability to scale. Shared memory frameworks are not considered a good choice when dealing with large data sizes (now a days refeered as big data). We were instructed to learn the OpenMPI framework to write programs using the message passing techniques.</p>
+								<p>The idea behind message passing is very simple. Let's suppose you want to divide your task into $n$ proccesses on $n$ different machines in a cluster. You initialize a single process on each of the $n$ machines. The point to remember here is that, the source of data is single for every process. As an example, assume you have extracted $10GB$ of data from one of google's web server and you initialize 5 processes to perform some actions on this file. That single file which contains $10GB$ of data, will be divided into $5$ chunks, i-e $2GB$ for each process. Each process will perform its own assigned task on the assigned chunk of file. In order to communicate, these processes will send and recieve messages to and from each other via network. This is how message passing interfaces work.</p>
+								<p>When we started practicing OpenMPI in labs, we used a cluster that was already set up at the research lab in our university. This means we were not able to practice OpenMPI outside of labs. Since, I didn't have extra physical hardware available to set up a cluster at home, it was time to find some alternate to the problem and this is the part where docker comes into play. Docker actually allows OS level virtualization, and is built on top of linux containers. This helps in packaging and shipping complete run-time environments to other machines.<br/> For deploying multiple containers, without needing to configure each one manually, we will use a tool called "docker compose". This tool will automate the deployment of containers for us.<br/> 
+								<br/>For insturctions on downloading docker and/or docker compose, follow 
+								<a href="https://docs.docker.com/compose/install/#alternative-install-options">this</a> link.<br/> You can find documentation on docker at 
+								<a href="https://docs.docker.com/engine/userguide/">this</a> link.</p>
+								<p>The next thing we will do is download the OpenMPI image from docker. Performing a docker search will fetch multiple repos from the hub.
+								<pre><code class="html">
+sudo docker search openmpi
+								</code></pre> We are going to use the container published by <a href="https://hub.docker.com/r/dispel4py/docker.openmpi/">dispel4py</a>. Next we pull the container from the hub.
+								<pre><code class="html">
+sudo docker pull dispel4py/docker.openmpi
+								</code></pre>You can view list  of downloaded images by
+								<pre><code class="html">
+sudo docker images
+								</code></pre> Next, we need to create a docker compose file that will contain configuration for automated deployment. You'll need to create a <b>docker-compose.yml</b> file (preferably in the same directory). This yml file will contain following instructions (Note: Use "blank spaces" instead of "tabs"):
+								<pre><code class="html">
+mpihead:
+ image: dispel4py/docker.openmpi
+ ports: 
+  - "22"
+ volumes:
+  - ~/ahmed/hpc:/hpc
+ links: 
+  - mpinode
+
+mpinode: 
+  image: dispel4py/docker.openmpi
+								</code></pre> According to the explaination by <a href="https://hub.docker.com/r/dispel4py/docker.openmpi/">dispel4py</a>:
+								<blockquote>
+								The file defines an mpihead and an mpinode. Both containers run the same openmpi image.
+The only difference is, that the mpihead container exposes its SHH server to
+the host system, so you can log into it to start your MPI applications.
+								</blockquote>On the other hand, what "volumes" does is, it mounts the directory "~/ahmed/hpc" located in my host to the directory "/hpc" of the head node. You can read more about mounting at  <a href="https://docs.docker.com/engine/tutorials/dockervolumes/">this</a> link.<br/> To perform an automated deployment, we simply "compose" the cluster containing 3 slave nodes and 1 master/head node.
+								<pre><code class="html">
+sudo docker-compose scale mpinode=3 mpihead=1
+Creating ubuntu_mpinode_1...
+Creating ubuntu_mpinode_2...
+Creating ubuntu_mpinode_3...
+Starting ubuntu_mpinode_1...
+Starting ubuntu_mpinode_2...
+Starting ubuntu_mpinode_3...
+Creating ubuntu_mpihead_1...
+Starting ubuntu_mpihead_1...
+								</code></pre> Doing a "ps -a" will list all the running containers.
+								<pre><code class="html">
+sudo docker ps -a
+								</code></pre> Our MPI programs are going to be executed in the head node, which will communicate and spawn processes in slave nodes. But in order to execute our program we need to enter the command line interface of the head. This can be achieved by
+								<pre><code class="html">
+sudo docker exec -it ubuntu_mpihead_1 /bin/bash
+								</code></pre> This will attach you to the bash of head node so let's create a file called "mpi.c" inside the mounted volume and write a basic hello world program. The code is available at <a href="http://mpitutorial.com/tutorials/mpi-hello-world/">this</a> link. It's time to execute the program and test our cluster deployment. Again attach to the container using "docker exec" command, as mentioned earlier and move to the "/hpc" directory. befor we can run our program, we need to compile it, to make sure there are no errors. This can be done by using "mpicc" tool available for compiling MPI programs.
+								<pre><code class="html">
+/usr/bin/mpicc -o mpi mpi.c	
+								</code></pre> This will create an executable file in the present working directory with the name "mpi" which can then be executed by issuing "mpirun" command in following way
+								<pre><code class="html">
+mpirun -n 4 mpi
+								</code></pre> The "-n" argument tells MPI, to spawn 4 new processes for the executable file. The value of this argument can be changed to any $x$ number of processes you want to spawn. Finally, if your output looks like this (position of ranks can vary in your case)
+								<pre><code class="html">
+Hello world from processor a82756a67deb, rank 3 out of 4 processors
+Hello world from processor a82756a67deb, rank 1 out of 4 processors
+Hello world from processor a82756a67deb, rank 2 out of 4 processors
+Hello world from processor a82756a67deb, rank 0 out of 4 processors
+								</code></pre> then you have sucessfully created an OpenMPI cluster. Now you can write and execute your own code on your machine without spinning up extra resource heavy VMs.
+								</p>
+								<p> For any kind of questions, feel free to contact me any time.</p>
 								<footer>
-									<ul class="actions">
-										<li><a href="openmpi-docker.html" class="button big">Continue Reading</a></li>
-									</ul>
 									<ul class="stats">
-										<li>open mpi, docker, dcoker-compose<</li>
+										<li>open mpi, docker, dcoker-compose</li>
 									</ul>
 								</footer>
 							</article>
@@ -439,7 +507,7 @@ print 'It took ' + i + ' iterations to sort the deck.';</code></pre>
 
 						<!-- Intro -->
 							<section id="intro">
-								<a href="index.html" class="logo"><img src="images/avatar.png" alt="" /></a>
+								<a href="#" class="logo"><img src="images/avatar.png" alt="" /></a>
 								<header>
 									<h2>Life of Py</h2>
 									<p>Another silly blog</a></p>
@@ -474,6 +542,7 @@ print 'It took ' + i + ' iterations to sort the deck.';</code></pre>
 			<script src="assets/js/util.js"></script>
 			<!--[if lte IE 8]><script src="assets/js/ie/respond.min.js"></script><![endif]-->
 			<script src="assets/js/main.js"></script>
+			
 
 	</body>
 </html>
